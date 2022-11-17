@@ -3,6 +3,13 @@ package s3
 import (
 	"bytes"
 	"context"
+	"io"
+	"io/ioutil"
+	"mime"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -12,13 +19,9 @@ import (
 	"github.com/viant/afs/option"
 	"github.com/viant/afs/option/content"
 	"github.com/viant/afs/storage"
-	"io"
-	"io/ioutil"
-	"os"
-	"strings"
 )
 
-//Upload uploads content
+// Upload uploads content
 func (s *storager) Upload(ctx context.Context, destination string, mode os.FileMode, reader io.Reader, options ...storage.Option) error {
 	destination = strings.Trim(destination, "/")
 	err := s.upload(ctx, destination, mode, reader, options)
@@ -45,6 +48,16 @@ func (s *storager) upload(ctx context.Context, destination string, mode os.FileM
 	grant := &option.Grant{}
 	acl := &option.ACL{}
 	option.Assign(options, &md5Hash, &key, &checksum, &meta, &serverSideEncryption, &stream, &grant, &acl)
+	if meta.Values == nil {
+		meta.Values = map[string]string{}
+	}
+	file, ok := reader.(*os.File)
+	if ok {
+		contentType := mime.TypeByExtension(filepath.Ext(file.Name()))
+		if contentType != "" {
+			meta.Values[content.Type] = contentType
+		}
+	}
 	if !checksum.Skip {
 		input := &s3.PutObjectInput{
 			Bucket:   &s.bucket,
